@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using UnityEngine;
 
-public class WavUtility
+public static class WavUtility
 {
     public static AudioClip ToAudioClip(byte[] data) {
         // ヘッダー解析
@@ -24,8 +24,24 @@ public class WavUtility
         return audioClip;
     }
 
-    public static void WriteHeader(FileStream fileStream, AudioClip audioClip) {
-        var hz = audioClip.frequency();
+    public static void SaveWav(this AudioClip audioClip, string filePath) {
+        using (var fileStream = CreateEmpty(filePath)) {
+            ConvertAndWrite(fileStream, audioClip);
+            WriteHeader(fileStream, audioClip);
+        }
+    }
+
+    // AudioClipからbyte配列に変換
+    public static byte[] GetWavData(this AudioClip audioClip) {
+        using (var memoryStream = new MemoryStream()) {
+            ConvertAndWrite(memoryStream, audioClip);
+            WriteHeader(memoryStream, audioClip);
+            return memoryStream.ToArray();
+        }
+    }
+
+    public static void WriteHeader(Stream fileStream, AudioClip audioClip) {
+        var hz = audioClip.frequency;
         var channels = audioClip.channels;
         var samples = audioClip.samples;
 
@@ -71,5 +87,31 @@ public class WavUtility
 
         byte[] subChunk2 = System.BitConverter.GetBytes(samples * channels * 2);
         fileStream.Write(subChunk2, 0, 4);
+    }
+
+    private static FileStream CreateEmpty(string filePath) {
+        var fileStream = new FileStream(filePath, FileMode.Create);
+        byte emptyByte = 0;
+        for (int i = 0; i < 44; i++) { // Preparing the header
+            fileStream.WriteByte(emptyByte);
+        }
+        return fileStream;
+    }
+
+    private static void ConvertAndWrite(Stream fileStream, AudioClip audioClip) {
+        var samples = new float[audioClip.samples];
+        audioClip.GetData(samples, 0);
+
+        var intData = new short[samples.Length];
+        var bytesData = new byte[samples.Length * 2];
+        const float rescaleFactor = 32767; //to convert float to Int16
+
+        for (int i = 0; i < samples.Length; i++) {
+            intData[i] = (short)(samples[i] * rescaleFactor);
+            byte[] byteArr = System.BitConverter.GetBytes(intData[i]);
+            byteArr.CopyTo(bytesData, i * 2);
+        }
+
+        fileStream.Write(bytesData, 0, bytesData.Length);
     }
 }
