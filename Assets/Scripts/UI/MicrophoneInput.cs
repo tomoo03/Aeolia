@@ -44,6 +44,9 @@ public class MicrophoneInput : MonoBehaviour
     // 録音を停止してサーバーに送信する
     public void StopRecordingAndSendWav() {
         StopRecording();
+        byte[] wavData = recordedClip.GetWavData();
+        Debug.Log("WAV file uploaded successfully");
+        Debug.Log(wavData);
         StartCoroutine(SendWavToServer());
     }
 
@@ -60,18 +63,28 @@ public class MicrophoneInput : MonoBehaviour
 
     // 録音したAudioClipをWAV形式のbyte配列に変換し、HTTPリクエストで指定されたURLにPOST
     public IEnumerator SendWavToServer() {
+        // 録音データをWAVフォーマットに変換
         byte[] wavData = recordedClip.GetWavData();
-        UnityWebRequest www = new UnityWebRequest(serverURL, "POST");
-        www.uploadHandler = new UploadHandlerRaw(wavData);
-        www.downloadHandler = new DownloadHandlerBuffer();
-        www.SetRequestHeader(HttpHeaderKey.CONTENT_TYPE, HttpHeader.AUDIO_WAV);
 
-        yield return www.SendWebRequest();
+        // フォームデータの作成
+        WWWForm form = new WWWForm();
+        form.AddBinaryData("file", wavData, "audio.wav", "audio/wav");
 
-        if (www.result != UnityWebRequest.Result.Success) {
-            Debug.Log(www.error);
-        } else {
-            Debug.Log("WAV file uploaded successfully");
+        // 送信用リクエストの作成
+        using (UnityWebRequest request = UnityWebRequest.Post(serverURL, form))
+        {
+            // リクエストを送信
+            yield return request.SendWebRequest();
+
+            // エラーチェック
+            if (request.result != UnityWebRequest.Result.Success)
+            {
+                Debug.LogError("Error sending WAV data: " + request.error);
+            }
+            else
+            {
+                Debug.Log("Successfully sent WAV data: " + request.downloadHandler.text);
+            }
         }
     }
 }
