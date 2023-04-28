@@ -94,10 +94,10 @@ public class CustomInputField : MonoBehaviour
                     // 最後のメッセージである場合、音声の再生を待ちループを終了させる。
                     if (receivedMessage.Contains("finish")) {
                         var model = JsonConvert.DeserializeObject<WebSocketClient.ChatFinishMessageResponse>(receivedMessage);
-                        if (ws.GetMessageListCount() == 0) {
-                            ws.AddMessages(model.messages);
+                        if (MessageManager.Instance.GetMessageCount() == 0) {
+                            MessageManager.Instance.AddRangeMessages(model.messages);
                         } else {
-                            ws.AddMessages(model.messages.Skip(model.messages.Count - 2).ToList());
+                            MessageManager.Instance.AddRangeMessages(model.messages.Skip(model.messages.Count - 2).ToList());
                         }
                         UnityMainThreadDispatcher.Instance().Enqueue(() => {
                             Debug.Log("Last Message: " + messageForPlayback);

@@ -20,11 +20,6 @@ public class WebSocketClient
         params object[] args
     );
 
-    /// <summary>
-    /// 会話履歴を保持するリスト
-    /// </summary>
-    private readonly List<ChatGPTMessageModel> _messageList = new();
-
     private WebSocketClient() {
         // WebSocketサーバーのURLを指定
         _ws = new WebSocket(ApiUrl.AEOLIA_WEB_SOCKET_URL);
@@ -43,14 +38,6 @@ public class WebSocketClient
 
     public int GetQueueCount() {
         return _messageQueue.Count();
-    }
-
-    public int GetMessageListCount() {
-        return _messageList.Count();
-    }
-
-    public void AddMessages(List<ChatGPTMessageModel> messages) {
-        _messageList.AddRange(messages);
     }
 
     public MessageForPlayback Dequeue() {
@@ -84,7 +71,7 @@ public class WebSocketClient
     ) {
         try {
             var dto = new ChatRequestDTO() {
-                messages = _messageList,
+                messages = MessageManager.Instance.MessageList,
                 text = message,
             };
             // APIサーバーにメッセージを送信
@@ -155,12 +142,6 @@ public class WebSocketClient
             message = message,
             order = order
         };
-    }
-
-    [System.Serializable]
-    public class ChatGPTMessageModel {
-        public string role;
-        public string content;
     }
 
     [System.Serializable]

@@ -2,8 +2,7 @@ using System;
 using System.IO;
 using UnityEngine;
 
-public static class WavUtility
-{
+public static class WavUtility {
     public static AudioClip ToAudioClip(byte[] data) {
         // ヘッダー解析
         int channels = data[22];
