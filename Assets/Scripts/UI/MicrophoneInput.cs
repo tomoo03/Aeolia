@@ -2,6 +2,7 @@ using System.Collections;
 using System.IO;
 using UnityEngine;
 using UnityEngine.Networking;
+using TMPro;
 
 // マイクから音声入力を取得
 public class MicrophoneInput : MonoBehaviour
@@ -10,10 +11,14 @@ public class MicrophoneInput : MonoBehaviour
     public int audioSampleRate = 44100;
     public string microphoneName;
     public bool isRecording = false;
-    public string savePath = "Assets/SavedAudio/";
     public string serverURL = $"{ApiUrl.AEOLIA_URL}/voice-chat"; // 送信先のURL
+    private string voiceInputText;
+    public TMP_InputField inputField;
+    public TMP_InputField voiceInputField;
 
     private AudioClip recordedClip;
+
+    public delegate void ServerResponseCallback(string response);
 
     private void Start() {
         if (Microphone.devices.Length > 0) {
@@ -26,15 +31,23 @@ public class MicrophoneInput : MonoBehaviour
 
     // 録音を開始する
     public void StartRecording() {
+        ButtonColor.Instance.ActivateStartButton();
+        Debug.Log("hoge");
         isRecording = true;
         audioSource = GetComponent<AudioSource>();
         recordedClip = Microphone.Start(microphoneName, false, 10, audioSampleRate);
-        while (!(Microphone.GetPosition(null) > 0)) { }
+        StartCoroutine(WaitForMicrophoneReady());
+    }
+
+    private IEnumerator WaitForMicrophoneReady() {
+        while (!(Microphone.GetPosition(null) > 0)) {
+            yield return null;
+        }
         audioSource.Play();
     }
 
     // 録音を停止する
-    public void StopRecording() {
+    private void StopRecording() {
         isRecording = false;
         Microphone.End(microphoneName);
         audioSource.Stop();
@@ -43,25 +56,36 @@ public class MicrophoneInput : MonoBehaviour
     // 録音を停止してサーバーに送信する
     public void StopRecordingAndSendWav() {
         StopRecording();
+        ButtonColor.Instance.DeactivateStartButton();
+        ButtonColor.Instance.ActivateStopButton();
         byte[] wavData = recordedClip.GetWavData();
         Debug.Log("WAV file uploaded successfully");
         Debug.Log(wavData);
-        StartCoroutine(SendWavToServer());
+        StartCoroutine(SendWavToServer((responseText) => {
+            if (responseText != null) {
+                Debug.Log("Server response: " + responseText);
+                voiceInputText = responseText;
+                ButtonColor.Instance.DeactivateStopButton();
+                SendMessage();
+            } else {
+                Debug.LogError("Error receiving response from server");
+                ButtonColor.Instance.DeactivateStopButton();
+            }
+        }));
     }
 
-    public void SaveWavFile() {
-        if (!Directory.Exists(savePath)) {
-            Directory.CreateDirectory(savePath);
+    public void SendMessage() {
+        // var inputFieldScript = inputFieldObject.GetComponent<CustomInputField>();
+        if (inputField != null && voiceInputField != null) {
+            voiceInputField.text = voiceInputText;
+            inputField.text = voiceInputText;
+            inputField.onEndEdit.Invoke(voiceInputText);
         }
 
-        string filePath = Path.Combine(savePath, "RecordedAudio_" + System.DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".wav");
-        recordedClip.SaveWav(filePath);
-
-        Debug.Log("Saved WAV file to: " + filePath);
     }
 
     // 録音したAudioClipをWAV形式のbyte配列に変換し、HTTPリクエストで指定されたURLにPOST
-    public IEnumerator SendWavToServer() {
+    public IEnumerator SendWavToServer(ServerResponseCallback callback) {
         // 録音データをWAVフォーマットに変換
         byte[] wavData = recordedClip.GetWavData();
 
@@ -83,7 +107,14 @@ public class MicrophoneInput : MonoBehaviour
             else
             {
                 Debug.Log("Successfully sent WAV data: " + request.downloadHandler.text);
+                var responseObject = JsonUtility.FromJson<WhisperMessageResponse>(request.downloadHandler.text);
+                callback?.Invoke(responseObject.text);
             }
         }
+    }
+
+    [System.Serializable]
+    public class WhisperMessageResponse {
+        public string text;
     }
 }
