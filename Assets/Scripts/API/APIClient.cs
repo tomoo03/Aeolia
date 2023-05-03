@@ -20,11 +20,6 @@ public class APIClient
     /// </summary>
     private const string API_URL = ApiUrl.AEOLIA_URL;
 
-    /// <summary>
-    /// 会話履歴を保持するリスト
-    /// </summary>
-    private readonly List<ChatGPTMessageModel> _messageList = new();
-
     public static APIClient getClient() {
         if (Instance == null) {
             Instance = new APIClient();

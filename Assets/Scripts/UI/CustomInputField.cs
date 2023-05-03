@@ -16,14 +16,13 @@ public class CustomInputField : MonoBehaviour
     public Animator targetAnimator;
     AudioSource audioSource;
     private object _queueLock = new object();
-    private List<ClipPlayOrder> _clipPlayOrders = new();
 
     public async void OnEndEdit() {
         try {
             Debug.Log("OnEndEdit start");
             targetAnimator.SetBool(AnimatorParameterName.UNITY_CHAN_IS_TALK, false);
             targetAnimator.SetBool(AnimatorParameterName.UNITY_CHAN_IS_THINK, true);
-            _clipPlayOrders.Clear();
+            MessageManager.Instance.ResetClipPlayOrders();
 
             var text = inputField.text;
             inputField.text = "";
@@ -94,16 +93,16 @@ public class CustomInputField : MonoBehaviour
                     // 最後のメッセージである場合、音声の再生を待ちループを終了させる。
                     if (receivedMessage.Contains("finish")) {
                         var model = JsonConvert.DeserializeObject<WebSocketClient.ChatFinishMessageResponse>(receivedMessage);
-                        if (ws.GetMessageListCount() == 0) {
-                            ws.AddMessages(model.messages);
+                        if (MessageManager.Instance.GetMessageCount() == 0) {
+                            MessageManager.Instance.AddRangeMessages(model.messages);
                         } else {
-                            ws.AddMessages(model.messages.Skip(model.messages.Count - 2).ToList());
+                            MessageManager.Instance.AddRangeMessages(model.messages.Skip(model.messages.Count - 2).ToList());
                         }
                         UnityMainThreadDispatcher.Instance().Enqueue(() => {
                             Debug.Log("Last Message: " + messageForPlayback);
                         });
                         while (true) {
-                            var copyList = _clipPlayOrders.ToList();
+                            var copyList = MessageManager.Instance.GetClipPlayOrdersCopy();
                             var previousClipPlayOrders = copyList.Where(value => value.order < targetOrder);
                             if (previousClipPlayOrders.Count() != targetOrder) {
                                 continue;
@@ -134,25 +133,25 @@ public class CustomInputField : MonoBehaviour
 
                     // 2つの非同期処理を定義
                     // VOICEVOXサーバーのAPIで音声合成を実行する。
-                    Task<ClipPlayOrder> task1 = CreateAudioClip(messageForPlayback);
+                    Task<ClipPlayOrder> createAudioClipTask = CreateAudioClip(messageForPlayback);
 
                     // 感情分析用APIを叩いて、分析値を取得する。
-                    Task<APIClient.AnalyzeResponse> task2 = Analyze(messageForPlayback);
+                    Task<APIClient.AnalyzeResponse> analyzeTask = Analyze(messageForPlayback);
 
                     // 2つのタスクが完了するまで待つ
-                    await Task.WhenAll(task1, task2);
+                    await Task.WhenAll(createAudioClipTask, analyzeTask);
 
                     // タスクの結果を取得
-                    ClipPlayOrder clipPlayOrder = await task1;
-                    APIClient.AnalyzeResponse analyzeResponse = await task2;
+                    ClipPlayOrder clipPlayOrder = await createAudioClipTask;
+                    APIClient.AnalyzeResponse analyzeResponse = await analyzeTask;
 
                     lock (_queueLock) {
-                        _clipPlayOrders.Add(clipPlayOrder);
+                        MessageManager.Instance.AddClipPlayOrders(clipPlayOrder);
                     }
 
                     // 順番を待って、音声を再生する。
                     while (true) {
-                        var copyList = _clipPlayOrders.ToList();
+                        var copyList = MessageManager.Instance.GetClipPlayOrdersCopy();
                         var previousClipPlayOrders = copyList.Where(value => value.order < targetOrder);
                         if (previousClipPlayOrders.Count() != targetOrder) {
                             continue;
@@ -179,7 +178,7 @@ public class CustomInputField : MonoBehaviour
                     UniTaskCompletionSource<bool> playStarted = new UniTaskCompletionSource<bool>();
                     UnityMainThreadDispatcher.Instance().Enqueue(() => {
                         lock (_queueLock) {
-                            var clip = _clipPlayOrders.Find(value => value.order == targetOrder);
+                            var clip = MessageManager.Instance.clipPlayOrders.Find(value => value.order == targetOrder);
                             audioSource.clip = clip.clip;
                             inputField.text += receivedMessage;
                             targetAnimator.SetBool(AnimatorParameterName.UNITY_CHAN_IS_THINK, false);
@@ -204,7 +203,7 @@ public class CustomInputField : MonoBehaviour
                     // ここでメインスレッド以外のスレッドに切り替える
                     await UniTask.SwitchToThreadPool();
 
-                    foreach (ClipPlayOrder value in _clipPlayOrders) {
+                    foreach (ClipPlayOrder value in MessageManager.Instance.clipPlayOrders) {
                         if (
                             value.order == targetOrder
                         ) {
@@ -250,7 +249,7 @@ public class CustomInputField : MonoBehaviour
             if (response.IsSuccessStatusCode) {
                 // レスポンスボディを byte[] として読み取る
                 byte[] responseBody = await response.Content.ReadAsByteArrayAsync();
-                TaskCompletionSource<ClipPlayOrder> tcs = new TaskCompletionSource<ClipPlayOrder>();
+                TaskCompletionSource<ClipPlayOrder> taskCompletionSource = new TaskCompletionSource<ClipPlayOrder>();
 
                 UnityMainThreadDispatcher.Instance().Enqueue(() => {
                     Debug.Log("IsSuccess, ToAudioClip Start");
@@ -261,10 +260,10 @@ public class CustomInputField : MonoBehaviour
                         isPlayed = false,
                         clip = audioClip,
                     };
-                    tcs.SetResult(clipPlayOrder);
+                    taskCompletionSource.SetResult(clipPlayOrder);
                 });
 
-                clipPlayOrder = await tcs.Task;
+                clipPlayOrder = await taskCompletionSource.Task;
             }
         }
         return clipPlayOrder;
@@ -274,19 +273,12 @@ public class CustomInputField : MonoBehaviour
         // 感情分析用APIを叩いて、分析値を取得する。
         APIClient apiClient = APIClient.getClient();
         APIClient.AnalyzeResponse response = new();
-        TaskCompletionSource<APIClient.AnalyzeResponse> tcs = new TaskCompletionSource<APIClient.AnalyzeResponse>();
+        TaskCompletionSource<APIClient.AnalyzeResponse> taskCompletionSource = new TaskCompletionSource<APIClient.AnalyzeResponse>();
         UnityMainThreadDispatcher.Instance().Enqueue(async () => {
             response = await apiClient.send(messageForPlayback.message);
             Debug.Log("感情分析値: " + response.ToString());
-            tcs.SetResult(response);
+            taskCompletionSource.SetResult(response);
         });
-        return await tcs.Task;
-    }
-
-    [System.Serializable]
-    class ClipPlayOrder {
-        public int order;
-        public bool isPlayed;
-        public AudioClip clip;
+        return await taskCompletionSource.Task;
     }
 }
