@@ -1,4 +1,5 @@
 using Newtonsoft.Json;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -7,13 +8,13 @@ using System;
 using UnityEngine;
 using WebSocketSharp;
 
-public class WebSocketClient
-{
+public class WebSocketClient : MonoBehaviour  {
     private static WebSocketClient _instance;
     private WebSocket _ws;
     private Queue<MessageForPlayback> _messageQueue = new Queue<MessageForPlayback>();
     private object _queueLock = new object();
     private AutoResetEvent _messageReceivedEvent = new AutoResetEvent(false);
+    private Coroutine sendingCoroutine;
     public delegate Task SendMessageCallback(
         WebSocketClient ws,
         AutoResetEvent messageReceivedEvent,
@@ -134,6 +135,28 @@ public class WebSocketClient
         {
             _ws.Close();
             _ws = null;
+        }
+    }
+
+    public void StartSending() {
+        if (sendingCoroutine == null) {
+            sendingCoroutine = StartCoroutine(StartSendingMessages(60, 180));
+        }
+    }
+
+    public void StopSending() {
+        if (sendingCoroutine != null) {
+            StopCoroutine(sendingCoroutine);
+            sendingCoroutine = null;
+        }
+    }
+
+    private IEnumerator StartSendingMessages(float minInterval, float maxInterval) {
+        while (true) {
+            float waitTime = UnityEngine.Random.Range(minInterval, maxInterval);
+            yield return new WaitForSeconds(waitTime);
+
+            // SendMessage("Your message");
         }
     }
 
