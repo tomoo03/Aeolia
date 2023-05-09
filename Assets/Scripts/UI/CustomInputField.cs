@@ -32,7 +32,7 @@ public class CustomInputField : MonoBehaviour
             webSocketClient.Connect();
             Debug.Log("Connect OK");
             Debug.Log("SendMessageAsync Start");
-            await webSocketClient.SendMessageAsync(text, SendMessageCallback);
+            await webSocketClient.SendMessageAsync(text, ChatConnectionMode.STANDARD, SendMessageCallback);
             webSocketClient.Close();
             Debug.Log("All OK");
         } catch (Exception e) {
@@ -42,8 +42,7 @@ public class CustomInputField : MonoBehaviour
 
     public async Task SendMessageCallback(
         WebSocketClient ws,
-        AutoResetEvent messageReceivedEvent,
-        params object[] args
+        AutoResetEvent messageReceivedEvent
     ) {
         // 無限ループ防止用の対応
             var LOOP_LIMIT = 100;
@@ -71,7 +70,7 @@ public class CustomInputField : MonoBehaviour
                 /// Set() メソッドが呼ばれることで、WaitOne() が解除される。
                 /// １つのループ中にSet()が複数呼ばれる可能性があるため、1秒ごとにブロックを解除している。
                 ///</summary>
-                messageReceivedEvent.WaitOne(1000);
+                messageReceivedEvent.WaitOne(500);
                 WebSocketClient.MessageForPlayback messageForPlayback = null;
 
                 // キューからメッセージを取得

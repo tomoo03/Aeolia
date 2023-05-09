@@ -17,8 +17,7 @@ public class WebSocketClient : MonoBehaviour  {
     private Coroutine sendingCoroutine;
     public delegate Task SendMessageCallback(
         WebSocketClient ws,
-        AutoResetEvent messageReceivedEvent,
-        params object[] args
+        AutoResetEvent messageReceivedEvent
     );
 
     private WebSocketClient() {
@@ -57,28 +56,28 @@ public class WebSocketClient : MonoBehaviour  {
 
     public async Task SendMessageAsync(
         string message,
-        SendMessageCallback callback,
-        params object[] args
-
+        int connectionMode,
+        SendMessageCallback callback
     ) {
-        await Task.Run(() => SendMessage(message, callback, _messageReceivedEvent, args));
+        await Task.Run(() => SendMessage(message, connectionMode, callback, _messageReceivedEvent));
     }
 
     private async Task SendMessage(
         string message,
+        int connectionMode,
         SendMessageCallback callback,
-        AutoResetEvent messageReceivedEvent,
-        params object[] args
+        AutoResetEvent messageReceivedEvent
     ) {
         try {
             var dto = new ChatRequestDTO() {
                 messages = MessageManager.Instance.MessageList,
                 text = message,
+                connection_mode = connectionMode
             };
             // APIサーバーにメッセージを送信
             _ws.Send(JsonConvert.SerializeObject(dto));
 
-            await callback(_instance, messageReceivedEvent, args);
+            await callback(_instance, messageReceivedEvent);
 
         } catch (Exception e) {
             Debug.Log(e);
@@ -171,6 +170,7 @@ public class WebSocketClient : MonoBehaviour  {
     public class ChatRequestDTO {
         public List<ChatGPTMessageModel> messages;
         public string text;
+        public int connection_mode;
     }
 
     [System.Serializable]
